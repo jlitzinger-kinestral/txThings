@@ -5,6 +5,7 @@ from setuptools import setup, find_packages
 setup(name='txThings',
       version='0.2.0',
       description='CoAP protocol implementation for Twisted Framework',
+      license="MIT",
       author='Maciej Wasilak',
       author_email='wasilak@gmail.com',
       url='https://github.com/siskin/txThings/',
