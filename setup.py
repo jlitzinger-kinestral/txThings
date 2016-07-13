@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(name='txThings',
-      version='0.1.4',
+      version='0.1.6',
       description='CoAP protocol implementation for Twisted Framework',
       author='Maciej Wasilak',
       author_email='wasilak@gmail.com',

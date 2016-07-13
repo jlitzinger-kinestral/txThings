@@ -772,7 +772,6 @@ class Coap(protocol.DatagramProtocol):
         self.observations = {} # outgoing observations. (token, remote) -> callback
 
     def datagramReceived(self, data, (host, port)):
-        log.msg("Received %r from %s:%d" % (data, host, port))
         message = Message.decode(data, (host, port), self)
         if self.deduplicateMessage(message) is True:
             return
@@ -798,12 +797,10 @@ class Coap(protocol.DatagramProtocol):
             cache.pop(key)
 
         key = (message.mid, message.remote)
-        log.msg("Incoming Message ID: %d" % message.mid)
         if message.mtype in (CON, NON):
             if key in self.recent_remote_ids:
                 if message.mtype is CON:
                     if len(self.recent_remote_ids[key]) == 3:
-                        log.msg('Duplicate CON received, sending old response again')
                         self.sendMessage(self.recent_remote_ids[key][2])
                     else:
                         log.msg('Duplicate CON received, no response to send')
@@ -811,7 +808,6 @@ class Coap(protocol.DatagramProtocol):
                     log.msg('Duplicate NON received')
                 return True
             else:
-                log.msg('New unique CON or NON message received')
                 addMessageToRecent(self.recent_remote_ids, key)
                 return False
         else:
@@ -819,7 +815,6 @@ class Coap(protocol.DatagramProtocol):
                 log.msg('Duplicate ACK or RST received')
                 return True
             else:
-                log.msg('New unique ACK or RST message received')
                 addMessageToRecent(self.recent_local_ids, key)
                 return False
 
@@ -845,7 +840,6 @@ class Coap(protocol.DatagramProtocol):
                 self.removeExchange(response)
             else:
                 return
-        log.msg("Received Response, token: %s, host: %s, port: %s" % (response.token.encode('hex'), response.remote[0], response.remote[1]))
         if (response.token, response.remote) in self.outgoing_requests:
             self.outgoing_requests.pop((response.token, response.remote)).handleResponse(response)
             ackIfConfirmable()
@@ -893,14 +887,12 @@ class Coap(protocol.DatagramProtocol):
             self.respond(response, request)
             return
         if (uriPathAsString(request.opt.uri_path), request.remote) in self.incoming_requests:
-            log.msg("Request pertains to earlier blockwise requests.")
             self.incoming_requests.pop((uriPathAsString(request.opt.uri_path), request.remote)).handleNextRequest(request)
         else:
             responder = Responder(self, request)
 
     def processEmpty(self, message):
         if message.mtype is CON:
-            log.msg('Empty CON message received (CoAP Ping) - replying with RST.')
             rst = Message(mtype=RST, mid=message.mid, code=EMPTY, payload='')
             rst.remote = message.remote
             self.sendMessage(rst)
@@ -913,7 +905,6 @@ class Coap(protocol.DatagramProtocol):
         """Set Message ID, encode and send message.
            Also if message is Confirmable (CON) add Exchange"""
         host, port = message.remote
-        log.msg("Sending message to %s:%d" % (host, port))
         recent_key = (message.mid, message.remote)
         if recent_key in self.recent_remote_ids:
             if len(self.recent_remote_ids[recent_key]) != 3:
@@ -925,7 +916,6 @@ class Coap(protocol.DatagramProtocol):
         self.transport.write(msg, message.remote)
         if message.mtype is CON:
             self.addExchange(message)
-        log.msg("Message %r sent successfully" % msg)
 
     def nextMessageID(self):
         """Reserve and return a new message ID."""
@@ -951,13 +941,11 @@ class Coap(protocol.DatagramProtocol):
         retransmission_counter = 0
         next_retransmission = reactor.callLater(timeout, self.retransmit, message, timeout, retransmission_counter)
         self.active_exchanges[message.mid] = (message, next_retransmission)
-        log.msg("Exchange added, Message ID: %d." % message.mid)
 
     def removeExchange(self, message):
         """Remove exchange from active exchanges and cancel the timeout
            to next retransmission."""
         self.active_exchanges.pop(message.mid)[1].cancel()
-        log.msg("Exchange removed, Message ID: %d." % message.mid)
 
     def retransmit(self, message, timeout, retransmission_counter):
         """Retransmit CON message that has not been ACKed or RSTed."""
@@ -968,7 +956,6 @@ class Coap(protocol.DatagramProtocol):
             timeout *= 2
             next_retransmission = reactor.callLater(timeout, self.retransmit, message, timeout, retransmission_counter)
             self.active_exchanges[message.mid] = (message, next_retransmission)
-            log.msg("Retransmission, Message ID: %d." % message.mid)
         else:
             pass
             #TODO: error handling (especially for requests)
@@ -1029,13 +1016,11 @@ class Requester(object):
         def cancelRequest(d):
             """Clean request after cancellation from user application."""
 
-            log.msg("Request cancelled")
             self.protocol.outgoing_requests.pop((request.token, request.remote))
 
         def timeoutRequest(d):
             """Clean the Request after a timeout."""
 
-            log.msg("Request timed out")
             del self.protocol.outgoing_requests[(request.token, request.remote)]
             d.errback(error.RequestTimedOut())
 
@@ -1056,7 +1041,6 @@ class Requester(object):
             timeout = reactor.callLater(REQUEST_TIMEOUT, timeoutRequest, d)
             d.addBoth(gotResult)
             self.protocol.outgoing_requests[(request.token, request.remote)] = self
-            log.msg("Sending request - Token: %s, Host: %s, Port: %s" % (request.token.encode('hex'), request.remote[0], request.remote[1]))
             if request.opt.observe is not None and self.cbs[0][0] is not None:
                 d.addCallback(self.registerObservation, self.cbs[0], request.opt.uri_path)
             return d
@@ -1114,7 +1098,6 @@ class Requester(object):
 
     def sendNextRequestBlock(self, result, next_block):
         """Helper method used for sending request blocks."""
-        log.msg("Sending next block of blockwise request.")
         self.deferred = self.sendRequest(next_block)
         self.deferred.addCallback(self.processBlock1InResponse)
         return self.deferred
@@ -1184,7 +1167,6 @@ class Responder(object):
         self.protocol = protocol
         self.assembled_request = None
         self.app_response = None
-        log.msg("Request doesn't pertain to earlier blockwise requests.")
         self.deferred = self.processBlock1InRequest(request)
         self.deferred.addErrback(self.handleBlock1RequestErrors)
         self.deferred.addCallback(self.dispatchRequest)
@@ -1196,7 +1178,6 @@ class Responder(object):
            are received."""
         if request.opt.block1 is not None:
             block1 = request.opt.block1
-            log.msg("Request with Block1 option received, number = %d, more = %d, size_exp = %d." % (block1.block_number, block1.more, block1.size_exponent))
             if block1.block_number == 0:
                 #TODO: Check if resource is available - if not send error immediately
                 #TODO: Check if method is allowed - if not send error immediately
@@ -1215,7 +1196,6 @@ class Responder(object):
                 #TODO: SIZE_CHECK2 should check if Size option is present, and reject the resource if size too large
                 return self.acknowledgeRequestBlock(request)
             else:
-                log.msg("Complete blockwise request received.")
                 return defer.succeed(self.assembled_request)
         else:
             if self.assembled_request is not None:
@@ -1224,7 +1204,6 @@ class Responder(object):
 
     def acknowledgeRequestBlock(self, request):
         """Helper method used to ask client to send next request block."""
-        log.msg("Sending block acknowledgement (allowing client to send next block).")
         response = request.generateNextBlock1Response()
         self.deferred = self.sendNonFinalResponse(response, request)
         self.deferred.addCallback(self.processBlock1InRequest)
@@ -1298,7 +1277,6 @@ class Responder(object):
         """Take application-supplied response and prepare it
            for sending."""
 
-        log.msg("Preparing response...")
         if delayed_ack is not None:
             if delayed_ack.active() is True:
                 delayed_ack.cancel()
@@ -1343,7 +1321,6 @@ class Responder(object):
 
     def sendResponseBlock(self, response_block, request):
         """Helper method to send next response block to client."""
-        log.msg("Sending response block.")
         self.deferred = self.sendNonFinalResponse(response_block, request)
         self.deferred.addCallback(self.processBlock2InRequest)
         self.deferred.addErrback(self.handleBlock2RequestErrors)
@@ -1398,7 +1375,6 @@ class Responder(object):
         #if isResponse(response.code) is False:
             #raise ValueError("Message code is not valid for a response.")
         response.token = request.token
-        log.msg("Token: %s" % ":".join("{:02x}".format(ord(c)) for c in response.token))
         response.remote = request.remote
         if request.opt.block1 is not None:
             response.opt.block1 = request.opt.block1
@@ -1416,7 +1392,6 @@ class Responder(object):
         if response.mid is None:
             if response.mtype in (ACK, RST):
                 response.mid = request.mid
-        log.msg("Sending response, type = %s (request type = %s)" % (types[response.mtype], types[request.mtype]))
         self.protocol.sendMessage(response)
 
     def sendEmptyAck(self, request):
