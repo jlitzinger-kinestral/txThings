@@ -1226,7 +1226,11 @@ class Responder(object):
         except error.UnsupportedMethod:
             self.respondWithError(request, METHOD_NOT_ALLOWED, "Error: Method not recognized!")
         else:
-            delayed_ack = reactor.callLater(EMPTY_ACK_DELAY, self.sendEmptyAck, request)
+            if request.mtype == CON:
+                delayed_ack = reactor.callLater(EMPTY_ACK_DELAY, self.sendEmptyAck, request)
+            else:
+                delayed_ack = None
+
             if resource.observable and request.code == GET and request.opt.observe is not None:
                 d.addCallback(self.handleObserve, request, resource)
             d.addCallback(self.respond, request, delayed_ack)
@@ -1280,6 +1284,10 @@ class Responder(object):
         if delayed_ack is not None:
             if delayed_ack.active() is True:
                 delayed_ack.cancel()
+
+        if app_response is None:
+            return defer.succeed(None)
+
         self.app_response = app_response
         size_exp = min(request.opt.block2.size_exponent if request.opt.block2 is not None else DEFAULT_BLOCK_SIZE_EXP, DEFAULT_BLOCK_SIZE_EXP)
         if len(self.app_response.payload) > (2 ** (size_exp + 4)):
